@@ -1,0 +1,33 @@
+# Updated by trungquandev.com's author on August 17 2023
+# YouTube: https://youtube.com/@trungquandev
+# "A bit of fragrance clings to the hand that gives flowers!"
+
+# Hướng dẫn cài đặt các biến môi trường để chạy được Source Code Final - Full đầy đủ này về máy các bạn sẽ có ở video cuối cùng trong Playlist Advanced trên kênh của mình tại đây: https://youtube.com/playlist?list=PLP6tw4Zpj-RJbPQfTZ0eCAXH_mHQiuf2G&si=zmt9y6TYo-e3sIwv
+
+# Cần sửa thông tin của riêng bạn ở đây:
+MONGODB_URI='YOUR_MONGODB_URI'
+DATABASE_NAME='YOUR_MONGODB_DATABASE_NAME'
+
+LOCAL_DEV_APP_HOST='localhost'
+LOCAL_DEV_APP_PORT=8017
+
+AUTHOR='TrungQuanDev'
+
+WEBSITE_DOMAIN_DEVELOPMENT='http://localhost:5173'
+WEBSITE_DOMAIN_PRODUCTION='https://trungquandev.com'
+
+# Cần sửa thông tin của riêng bạn ở đây:
+BREVO_API_KEY='YOUR_BREVO_API_KEY'
+ADMIN_EMAIL_ADDRESS='YOUR_BREVO_API_ADDRESS'
+ADMIN_EMAIL_NAME='YOUR_EMAIL_NAME'
+
+ACCESS_TOKEN_SECRET_SIGNATURE='random-trello-mern-advanced-AT-trungquandev-Aa@'
+ACCESS_TOKEN_LIFE='1h'
+
+REFRESH_TOKEN_SECRET_SIGNATURE='random-trello-mern-advanced-RT-trungquandev-Aa@'
+REFRESH_TOKEN_LIFE='14 days'
+
+# Cần sửa thông tin của riêng bạn ở đây:
+CLOUDINARY_CLOUD_NAME='YOUR_CLOUDINARY_CLOUD_NAME'
+CLOUDINARY_API_KEY='YOUR_CLOUDINARY_API_KEY'
+CLOUDINARY_API_SECRET='YOUR_CLOUDINARY_API_SECRET'
