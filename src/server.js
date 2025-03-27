@@ -1,10 +1,3 @@
-/* eslint-disable no-console */
-/**
- * Updated by trungquandev.com's author on August 17 2023
- * YouTube: https://youtube.com/@trungquandev
- * "A bit of fragrance clings to the hand that gives flowers!"
- */
-
 import express from 'express'
 import cors from 'cors'
 import { corsOptions } from '~/config/cors'
@@ -60,13 +53,13 @@ const START_SERVER = () => {
   if (env.BUILD_MODE === 'production') {
     // Dùng server.listen thay vì app.listen vì lúc này server đã bao gồm express app và đã config socket.io
     server.listen(process.env.PORT, () => {
-      console.log(`3. Production: Hi ${env.AUTHOR}, Back-end Server is running successfully at Port: ${process.env.PORT}`)
+      console.log(`3. Server is running at Port: ${process.env.PORT}`)
     })
   } else {
     // Môi trường Local Dev
     // Dùng server.listen thay vì app.listen vì lúc này server đã bao gồm express app và đã config socket.io
     server.listen(env.LOCAL_DEV_APP_PORT, env.LOCAL_DEV_APP_HOST, () => {
-      console.log(`3. Local DEV: Hi ${env.AUTHOR}, Back-end Server is running successfully at Host: ${env.LOCAL_DEV_APP_HOST} and Port: ${env.LOCAL_DEV_APP_PORT}`)
+      console.log(`3. Server is running at Host: ${env.LOCAL_DEV_APP_HOST} and Port: ${env.LOCAL_DEV_APP_PORT}`)
     })
   }
 
@@ -94,13 +87,3 @@ const START_SERVER = () => {
     process.exit(0)
   }
 })()
-
-// // Chỉ khi Kết nối tới Database thành công thì mới Start Server Back-end lên.
-// console.log('1. Connecting to MongoDB Cloud Atlas...')
-// CONNECT_DB()
-//   .then(() => console.log('2. Connected to MongoDB Cloud Atlas!'))
-//   .then(() => START_SERVER())
-//   .catch(error => {
-//     console.error(error)
-//     process.exit(0)
-//   })
