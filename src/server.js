@@ -12,6 +12,7 @@ import cookieParser from 'cookie-parser'
 import http from 'http'
 import socketIo from 'socket.io'
 import { inviteUserToBoardSocket } from '~/sockets/inviteUserToBoardSocket'
+import { boardRealtimeSocket } from '~/sockets/boardRealtimeSocket'
 
 const START_SERVER = () => {
   const app = express()
@@ -45,6 +46,7 @@ const START_SERVER = () => {
   io.on('connection', (socket) => {
     // Gọi các socket tùy theo tính năng ở đây.
     inviteUserToBoardSocket(socket)
+    boardRealtimeSocket(socket)
 
     // ...vv
   })
