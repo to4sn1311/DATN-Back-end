@@ -23,6 +23,15 @@ const CARD_COLLECTION_SCHEMA = Joi.object({
   memberIds: Joi.array().items(
     Joi.string().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE)
   ).default([]),
+  // Thêm trường attachments để lưu thông tin về các tệp đính kèm
+  attachments: Joi.array().items({
+    fileName: Joi.string().required(),
+    fileUrl: Joi.string().required(),
+    fileType: Joi.string().required(),
+    fileSize: Joi.number().required(),
+    uploadedAt: Joi.date().timestamp().default(Date.now),
+    uploadedBy: Joi.string().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE)
+  }).default([]),
   // Dữ liệu comments của Card chúng ta sẽ học cách nhúng - embedded vào bản ghi Card luôn như dưới đây:
   comments: Joi.array().items({
     userId: Joi.string().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE),
@@ -163,6 +172,13 @@ const updateManyComments = async (userInfo) => {
   } catch (error) { throw new Error(error) }
 }
 
+const deleteOneById = async (cardId) => {
+  try {
+    const result = await GET_DB().collection(CARD_COLLECTION_NAME).deleteOne({ _id: new ObjectId(cardId) })
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
 export const cardModel = {
   CARD_COLLECTION_NAME,
   CARD_COLLECTION_SCHEMA,
@@ -172,5 +188,6 @@ export const cardModel = {
   deleteManyByColumnId,
   unshiftNewComment,
   updateMembers,
-  updateManyComments
+  updateManyComments,
+  deleteOneById
 }

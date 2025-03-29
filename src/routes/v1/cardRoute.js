@@ -21,5 +21,14 @@ Router.route('/:id')
     cardValidation.update,
     cardController.update
   )
+  .delete(authMiddleware.isAuthorized, cardController.deleteItem)
+
+// Route mới cho việc tải lên tệp đính kèm
+Router.route('/:id/attachments')
+  .post(
+    authMiddleware.isAuthorized,
+    multerUploadMiddleware.uploadAttachment.single('attachment'),
+    cardController.uploadAttachment
+  )
 
 export const cardRoute = Router
