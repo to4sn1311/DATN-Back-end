@@ -28,7 +28,7 @@ const createNew = async (reqBody) => {
   } catch (error) { throw error }
 }
 
-const update = async (cardId, reqBody, cardCoverFile, userInfo) => {
+const update = async (cardId, reqBody, cardCoverFile, userInfo, attachmentFile = null) => {
   try {
     const updateData = {
       ...reqBody,
@@ -40,6 +40,29 @@ const update = async (cardId, reqBody, cardCoverFile, userInfo) => {
     if (cardCoverFile) {
       const uploadResult = await CloudinaryProvider.streamUpload(cardCoverFile.buffer, 'card-covers')
       updatedCard = await cardModel.update(cardId, { cover: uploadResult.secure_url })
+    } else if (attachmentFile) {
+      // Xử lý upload file đính kèm lên S3
+      const uploadResult = await S3Provider.uploadFile(
+        attachmentFile.buffer,
+        attachmentFile.originalname,
+        'card-attachments'
+      )
+
+      // Tạo dữ liệu attachment để thêm vào Database
+      const attachmentData = {
+        fileName: attachmentFile.originalname,
+        fileUrl: uploadResult.url,
+        fileType: attachmentFile.mimetype,
+        fileSize: attachmentFile.size,
+        uploadedBy: userInfo._id
+      }
+
+      // Lấy card hiện tại để lấy danh sách attachments
+      const currentCard = await cardModel.findOneById(cardId)
+      const updatedAttachments = [...(currentCard.attachments || []), attachmentData]
+
+      // Cập nhật card với attachment mới
+      updatedCard = await cardModel.update(cardId, { attachments: updatedAttachments })
     } else if (updateData.commentToAdd) {
       // Tạo dữ liệu comment để thêm vào Database, cần bổ sung thêm những field cần thiết
       const commentData = {
@@ -52,6 +75,33 @@ const update = async (cardId, reqBody, cardCoverFile, userInfo) => {
     } else if (updateData.incomingMemberInfo) {
       // Trường hợp ADD hoặc REMOVE thành viên ra khỏi Card
       updatedCard = await cardModel.updateMembers(cardId, updateData.incomingMemberInfo)
+    } else if (updateData.attachmentIdToRemove) {
+      // Trường hợp xóa attachment khỏi card
+      // Lấy card hiện tại để lấy danh sách attachments
+      const currentCard = await cardModel.findOneById(cardId)
+      
+      // Tìm attachment cần xóa
+      const attachmentToRemove = currentCard.attachments.find(
+        att => att._id.toString() === updateData.attachmentIdToRemove
+      )
+      
+      if (attachmentToRemove) {
+        // Lấy key từ URL để xóa khỏi S3
+        const fileKey = attachmentToRemove.fileUrl.split('/').slice(-2).join('/')
+        
+        // Xóa file khỏi S3
+        await S3Provider.deleteFile(fileKey)
+        
+        // Cập nhật danh sách attachments mới không có attachment đã xóa
+        const updatedAttachments = currentCard.attachments.filter(
+          att => att._id.toString() !== updateData.attachmentIdToRemove
+        )
+        
+        // Cập nhật card với danh sách attachments mới
+        updatedCard = await cardModel.update(cardId, { attachments: updatedAttachments })
+      } else {
+        throw new ApiError(StatusCodes.NOT_FOUND, 'Attachment not found!')
+      }
     } else {
       // Các trường hợp update chung như title, description
       updatedCard = await cardModel.update(cardId, updateData)
