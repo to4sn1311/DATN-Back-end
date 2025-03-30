@@ -20,6 +20,9 @@ const CARD_COLLECTION_SCHEMA = Joi.object({
   description: Joi.string().optional(),
 
   cover: Joi.string().default(null),
+  isCompleted: Joi.boolean().default(false),
+  startDate: Joi.date().allow(null).default(null),
+  dueDate: Joi.date().allow(null).default(null),
   memberIds: Joi.array().items(
     Joi.string().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE)
   ).default([]),

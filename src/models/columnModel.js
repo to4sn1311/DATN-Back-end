@@ -65,6 +65,19 @@ const pushCardOrderIds = async (card) => {
   } catch (error) { throw new Error(error) }
 }
 
+// Lấy một phần tử cardId ra khỏi mảng cardOrderIds
+// Dùng $pull trong mongodb để lấy một phần tử ra khỏi mảng rồi xóa nó đi
+const pullCardOrderIds = async (card) => {
+  try {
+    const result = await GET_DB().collection(COLUMN_COLLECTION_NAME).findOneAndUpdate(
+      { _id: new ObjectId(card.columnId) },
+      { $pull: { cardOrderIds: new ObjectId(card._id) } },
+      { returnDocument: 'after' }
+    )
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
 const update = async (columnId, updateData) => {
   try {
     // Lọc những field mà chúng ta không cho phép cập nhật linh tinh
@@ -101,6 +114,7 @@ export const columnModel = {
   createNew,
   findOneById,
   pushCardOrderIds,
+  pullCardOrderIds,
   update,
   deleteOneById
 }

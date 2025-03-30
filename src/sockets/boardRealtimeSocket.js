@@ -21,4 +21,10 @@ export const boardRealtimeSocket = (socket) => {
     // Gửi sự kiện đến tất cả người dùng khác (trừ người gửi)
     socket.broadcast.emit('BE_CARD_MOVED_DIFFERENT_COLUMN', data)
   })
+  
+  // Lắng nghe sự kiện cập nhật card (ví dụ: checkbox isCompleted thay đổi)
+  socket.on('FE_CARD_UPDATED', (data) => {
+    // Gửi sự kiện đến tất cả người dùng khác (trừ người gửi)
+    socket.broadcast.emit('BE_CARD_UPDATED', data)
+  })
 }
