@@ -136,9 +136,12 @@ const updateMembers = async (cardId, incomingMemberInfo) => {
   try {
     // Tạo ra một biến updateCondition ban đầu là rỗng
     let updateCondition = {}
+    let isAddAction = false
+
     if (incomingMemberInfo.action === CARD_MEMBER_ACTIONS.ADD) {
       // console.log('Trường hợp Add, dùng $push: ', incomingMemberInfo)
       updateCondition = { $push: { memberIds: new ObjectId(incomingMemberInfo.userId) } }
+      isAddAction = true
     }
 
     if (incomingMemberInfo.action === CARD_MEMBER_ACTIONS.REMOVE) {
@@ -151,7 +154,14 @@ const updateMembers = async (cardId, incomingMemberInfo) => {
       updateCondition, // truyền cái updateCondition ở đây
       { returnDocument: 'after' }
     )
-    return result
+
+    // Thêm thông tin của card và hành động vào kết quả trả về 
+    // để có thể sử dụng cho việc gửi thông báo
+    return {
+      ...result,
+      actionType: incomingMemberInfo.action,
+      isAddAction: isAddAction
+    }
   } catch (error) { throw new Error(error) }
 }
 

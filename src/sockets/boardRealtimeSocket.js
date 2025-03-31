@@ -27,4 +27,20 @@ export const boardRealtimeSocket = (socket) => {
     // Gửi sự kiện đến tất cả người dùng khác (trừ người gửi)
     socket.broadcast.emit('BE_CARD_UPDATED', data)
   })
+
+  // Lắng nghe sự kiện cập nhật thành viên của card
+  socket.on('FE_CARD_MEMBERS_UPDATED', (data) => {
+    console.log('Server nhận sự kiện FE_CARD_MEMBERS_UPDATED:', {
+      boardId: data.boardId,
+      socketId: socket.id
+    })
+    // Gửi sự kiện đến tất cả người dùng khác (trừ người gửi)
+    socket.broadcast.emit('BE_CARD_MEMBERS_UPDATED', data)
+    console.log('Server đã phát sự kiện BE_CARD_MEMBERS_UPDATED')
+  })
+
+  // Lắng nghe sự kiện xác nhận đã đọc thông báo gán task từ client
+  socket.on('FE_CARD_ASSIGNMENT_NOTIFICATION_READ', (data) => {
+    console.log('Người dùng đã đọc thông báo gán task:', data)
+  })
 }

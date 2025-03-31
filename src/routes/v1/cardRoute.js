@@ -1,8 +1,3 @@
-/**
- * Updated by trungquandev.com's author on August 17 2023
- * YouTube: https://youtube.com/@trungquandev
- * "A bit of fragrance clings to the hand that gives flowers!"
- */
 import express from 'express'
 import { cardValidation } from '~/validations/cardValidation'
 import { cardController } from '~/controllers/cardController'
@@ -39,24 +34,7 @@ Router.route('/:id/restore')
 Router.route('/:id')
   .put(
     authMiddleware.isAuthorized,
-    (req, res, next) => {
-      // Sử dụng middleware multer tùy thuộc vào trường hợp
-      if (req.headers['content-type']?.includes('multipart/form-data')) {
-        // Nếu có file cardCover
-        if (req.headers['x-file-type'] === 'cover') {
-          multerUploadMiddleware.upload.single('cardCover')(req, res, next)
-        } 
-        // Nếu có file attachment
-        else if (req.headers['x-file-type'] === 'attachment') {
-          multerUploadMiddleware.uploadAttachment.single('attachmentFile')(req, res, next)
-        }
-        else {
-          next()
-        }
-      } else {
-        next()
-      }
-    },
+    multerUploadMiddleware.upload.single('cardCover'),
     cardValidation.update,
     cardController.update
   )

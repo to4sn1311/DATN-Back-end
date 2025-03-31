@@ -13,6 +13,7 @@ import http from 'http'
 import socketIo from 'socket.io'
 import { inviteUserToBoardSocket } from '~/sockets/inviteUserToBoardSocket'
 import { boardRealtimeSocket } from '~/sockets/boardRealtimeSocket'
+import { Server } from 'socket.io'
 
 const START_SERVER = () => {
   const app = express()
@@ -45,7 +46,13 @@ const START_SERVER = () => {
   // Tạo một cái server mới bọc thằng app của express để làm real-time với socket.io
   const server = http.createServer(app)
   // Khởi tạo biến io với server và cors
-  const io = socketIo(server, { cors: corsOptions })
+  const io = new Server(server, {
+    cors: corsOptions
+  })
+
+  // Đặt io vào biến global để các module khác có thể truy cập
+  global.io = io
+
   io.on('connection', (socket) => {
     // Gọi các socket tùy theo tính năng ở đây.
     inviteUserToBoardSocket(socket)

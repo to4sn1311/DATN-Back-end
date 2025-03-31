@@ -1,9 +1,3 @@
-/**
- * Updated by trungquandev.com's author on August 17 2023
- * YouTube: https://youtube.com/@trungquandev
- * "A bit of fragrance clings to the hand that gives flowers!"
- */
-
 import { cardModel } from '~/models/cardModel'
 import { columnModel } from '~/models/columnModel'
 import { CloudinaryProvider } from '~/providers/CloudinaryProvider'
@@ -29,7 +23,7 @@ const createNew = async (reqBody) => {
   } catch (error) { throw error }
 }
 
-const update = async (cardId, reqBody, cardCoverFile, userInfo, attachmentFile = null) => {
+const update = async (cardId, reqBody, cardCoverFile) => {
   try {
     const updateData = {
       ...reqBody,
@@ -39,75 +33,36 @@ const update = async (cardId, reqBody, cardCoverFile, userInfo, attachmentFile =
     let updatedCard = {}
 
     if (cardCoverFile) {
-      const uploadResult = await CloudinaryProvider.streamUpload(cardCoverFile.buffer, 'card-covers')
-      updatedCard = await cardModel.update(cardId, { cover: uploadResult.secure_url })
-    } else if (attachmentFile) {
-      // Xử lý upload file đính kèm lên S3
-      const uploadResult = await S3Provider.uploadFile(
-        attachmentFile.buffer,
-        attachmentFile.originalname,
-        'card-attachments'
-      )
-
-      // Tạo dữ liệu attachment để thêm vào Database
-      const attachmentData = {
-        fileName: attachmentFile.originalname,
-        fileUrl: uploadResult.url,
-        fileType: attachmentFile.mimetype,
-        fileSize: attachmentFile.size,
-        uploadedBy: userInfo._id
-      }
-
-      // Lấy card hiện tại để lấy danh sách attachments
-      const currentCard = await cardModel.findOneById(cardId)
-      const updatedAttachments = [...(currentCard.attachments || []), attachmentData]
-
-      // Cập nhật card với attachment mới
-      updatedCard = await cardModel.update(cardId, { attachments: updatedAttachments })
-    } else if (updateData.commentToAdd) {
-      // Tạo dữ liệu comment để thêm vào Database, cần bổ sung thêm những field cần thiết
-      const commentData = {
-        ...updateData.commentToAdd,
-        commentedAt: Date.now(),
-        userId: userInfo._id,
-        userEmail: userInfo.email
-      }
-      updatedCard = await cardModel.unshiftNewComment(cardId, commentData)
-    } else if (updateData.incomingMemberInfo) {
-      // Trường hợp ADD hoặc REMOVE thành viên ra khỏi Card
-      updatedCard = await cardModel.updateMembers(cardId, updateData.incomingMemberInfo)
-    } else if (updateData.attachmentIdToRemove) {
-      // Trường hợp xóa attachment khỏi card
-      // Lấy card hiện tại để lấy danh sách attachments
-      const currentCard = await cardModel.findOneById(cardId)
+      const uploadResult = await CloudinaryProvider.streamUpload(cardCoverFile.buffer, 'card-cover')
+      updatedCard = await cardModel.update(cardId, {
+        cover: uploadResult.secure_url
+      })
+    } else if (reqBody.incomingMemberInfo) {
+      // Nếu có thông tin về thành viên, sử dụng hàm updateMembers chuyên biệt
+      updatedCard = await cardModel.updateMembers(cardId, reqBody.incomingMemberInfo)
       
-      // Tìm attachment cần xóa
-      const attachmentToRemove = currentCard.attachments.find(
-        att => att._id.toString() === updateData.attachmentIdToRemove
-      )
-      
-      if (attachmentToRemove) {
-        // Lấy key từ URL để xóa khỏi S3
-        const fileKey = attachmentToRemove.fileUrl.split('/').slice(-2).join('/')
+      // Nếu là hành động thêm thành viên, gửi thông báo cho người dùng đó
+      if (updatedCard.isAddAction) {
+        // Lấy thông tin chi tiết của card để gửi thông báo
+        const card = await cardModel.findOneById(cardId)
         
-        // Xóa file khỏi S3
-        await S3Provider.deleteFile(fileKey)
-        
-        // Cập nhật danh sách attachments mới không có attachment đã xóa
-        const updatedAttachments = currentCard.attachments.filter(
-          att => att._id.toString() !== updateData.attachmentIdToRemove
-        )
-        
-        // Cập nhật card với danh sách attachments mới
-        updatedCard = await cardModel.update(cardId, { attachments: updatedAttachments })
-      } else {
-        throw new ApiError(StatusCodes.NOT_FOUND, 'Attachment not found!')
+        // Cần import socketIoInstance từ thư mục sockets hoặc từ nơi khác
+        // Để đơn giản, chúng ta sẽ sử dụng biến io toàn cục được export trong server.js
+        // Emit sự kiện socket để thông báo cho frontend
+        if (global.io) {
+          global.io.emit('BE_CARD_ASSIGNMENT_NOTIFICATION', {
+            userId: reqBody.incomingMemberInfo.userId,
+            cardId: cardId,
+            cardTitle: card.title,
+            boardId: card.boardId,
+            columnId: card.columnId,
+            assignedBy: reqBody.assignedBy || 'Someone'
+          })
+        }
       }
     } else {
-      // Các trường hợp update chung như title, description
       updatedCard = await cardModel.update(cardId, updateData)
     }
-
 
     return updatedCard
   } catch (error) { throw error }

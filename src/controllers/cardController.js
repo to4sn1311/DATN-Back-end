@@ -16,24 +16,19 @@ const createNew = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const cardId = req.params.id
-    const userInfo = req.jwtDecoded
+    const cardCoverFile = req.file
     
-    // Xác định loại file từ header và gán cho biến tương ứng
-    let cardCoverFile = null
-    let attachmentFile = null
-    
-    if (req.file) {
-      if (req.headers['x-file-type'] === 'cover') {
-        cardCoverFile = req.file
-      } else if (req.headers['x-file-type'] === 'attachment') {
-        attachmentFile = req.file
-      }
+    // Thêm thông tin người đang thực hiện request làm người gán task
+    if (req.body.incomingMemberInfo) {
+      req.body.assignedBy = req.jwtDecoded ? req.jwtDecoded.displayName : 'Someone'
     }
     
-    const updatedCard = await cardService.update(cardId, req.body, cardCoverFile, userInfo, attachmentFile)
+    const updatedCard = await cardService.update(cardId, req.body, cardCoverFile)
 
     res.status(StatusCodes.OK).json(updatedCard)
-  } catch (error) { next(error) }
+  } catch (error) {
+    next(error)
+  }
 }
 
 const deleteCard = async (req, res, next) => {
