@@ -11,17 +11,23 @@ import { multerUploadMiddleware } from '~/middlewares/multerUploadMiddleware'
 
 const Router = express.Router()
 
+// Middleware xử lý upload file card cover
+Router.put('/update-cover/:id', authMiddleware.isAuthorized, (req, res, next) => {
+  multerUploadMiddleware.upload.single('cardCover')(req, res, next)
+}, cardController.update)
+
+// Middleware xử lý upload single file đính kèm
+Router.put('/update-attachment/:id', authMiddleware.isAuthorized, (req, res, next) => {
+  multerUploadMiddleware.uploadAttachment.single('attachmentFile')(req, res, next)
+}, cardController.update)
+
+// Middleware xử lý upload nhiều file đính kèm cùng lúc
+Router.put('/upload-attachments/:id', authMiddleware.isAuthorized, (req, res, next) => {
+  multerUploadMiddleware.uploadAttachment.array('attachmentFiles', 5)(req, res, next)
+}, cardController.uploadMultipleAttachments)
+
 Router.route('/')
   .post(authMiddleware.isAuthorized, cardValidation.createNew, cardController.createNew)
-
-Router.route('/:id')
-  .put(
-    authMiddleware.isAuthorized,
-    multerUploadMiddleware.upload.single('cardCover'),
-    cardValidation.update,
-    cardController.update
-  )
-  .delete(authMiddleware.isAuthorized, cardController.deleteCard)
 
 Router.route('/:id/restore')
   .put(
@@ -29,5 +35,31 @@ Router.route('/:id/restore')
     cardValidation.restore,
     cardController.restore
   )
+
+Router.route('/:id')
+  .put(
+    authMiddleware.isAuthorized,
+    (req, res, next) => {
+      // Sử dụng middleware multer tùy thuộc vào trường hợp
+      if (req.headers['content-type']?.includes('multipart/form-data')) {
+        // Nếu có file cardCover
+        if (req.headers['x-file-type'] === 'cover') {
+          multerUploadMiddleware.upload.single('cardCover')(req, res, next)
+        } 
+        // Nếu có file attachment
+        else if (req.headers['x-file-type'] === 'attachment') {
+          multerUploadMiddleware.uploadAttachment.single('attachmentFile')(req, res, next)
+        }
+        else {
+          next()
+        }
+      } else {
+        next()
+      }
+    },
+    cardValidation.update,
+    cardController.update
+  )
+  .delete(authMiddleware.isAuthorized, cardController.deleteCard)
 
 export const cardRoute = Router

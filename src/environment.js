@@ -5,14 +5,6 @@
  */
 import 'dotenv/config'
 
-// Debug biến môi trường
-console.log('Environment variables loaded:', {
-  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ? 'Defined' : 'Undefined',
-  AWS_REGION: process.env.AWS_REGION ? 'Defined' : 'Undefined',
-  AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME ? 'Defined' : 'Undefined',
-  NODE_ENV: process.env.NODE_ENV
-})
-
 export const env = {
   MONGODB_URI: process.env.MONGODB_URI,
   DATABASE_NAME: process.env.DATABASE_NAME,
@@ -41,7 +33,6 @@ export const env = {
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
 
-  // AWS S3 config
   AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
   AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
   AWS_REGION: process.env.AWS_REGION,

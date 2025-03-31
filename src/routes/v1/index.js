@@ -6,21 +6,25 @@
 
 import express from 'express'
 import { StatusCodes } from 'http-status-codes'
-import { boardRoute } from '~/routes/v1/boardRoute'
-import { columnRoute } from '~/routes/v1/columnRoute'
-import { cardRoute } from '~/routes/v1/cardRoute'
-import { userRoute } from '~/routes/v1/userRoute'
-import { invitationRoute } from '~/routes/v1/invitationRoute'
+import { boardRoute } from './boardRoute.js'
+import { columnRoute } from './columnRoute.js'
+import { cardRoute } from './cardRoute.js'
+import { userRoute } from './userRoute.js'
+import { invitationRoute } from './invitationRoute.js'
+import { uploadRoute } from './upload.route.js'
 
 const Router = express.Router()
 
 /** Check APIs v1/status */
 Router.get('/status', (req, res) => {
-  res.status(StatusCodes.OK).json({ message: 'APIs V1 are ready to use.' })
+  res.status(StatusCodes.OK).json({ status: 'OK!' })
 })
 
 /** Board APIs */
 Router.use('/boards', boardRoute)
+
+/** Hỗ trợ cả cấu trúc URL cũ và mới từ frontend */
+Router.use('/boards/cards', cardRoute)
 
 /** Column APIs */
 Router.use('/columns', columnRoute)
@@ -33,5 +37,8 @@ Router.use('/users', userRoute)
 
 /** Invitation APIs */
 Router.use('/invitations', invitationRoute)
+
+/** Upload APIs */
+Router.use('/upload', uploadRoute)
 
 export const APIs_V1 = Router

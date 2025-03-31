@@ -16,9 +16,21 @@ const createNew = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const cardId = req.params.id
-    const cardCoverFile = req.file
     const userInfo = req.jwtDecoded
-    const updatedCard = await cardService.update(cardId, req.body, cardCoverFile, userInfo)
+    
+    // Xác định loại file từ header và gán cho biến tương ứng
+    let cardCoverFile = null
+    let attachmentFile = null
+    
+    if (req.file) {
+      if (req.headers['x-file-type'] === 'cover') {
+        cardCoverFile = req.file
+      } else if (req.headers['x-file-type'] === 'attachment') {
+        attachmentFile = req.file
+      }
+    }
+    
+    const updatedCard = await cardService.update(cardId, req.body, cardCoverFile, userInfo, attachmentFile)
 
     res.status(StatusCodes.OK).json(updatedCard)
   } catch (error) { next(error) }
@@ -42,9 +54,28 @@ const restore = async (req, res, next) => {
   } catch (error) { next(error) }
 }
 
+const uploadMultipleAttachments = async (req, res, next) => {
+  try {
+    const cardId = req.params.id
+    const userInfo = req.jwtDecoded
+    
+    if (!req.files || req.files.length === 0) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        errors: 'Không có tệp đính kèm nào được tải lên'
+      })
+    }
+    
+    // Gọi service để xử lý upload nhiều file
+    const updatedCard = await cardService.uploadMultipleAttachments(cardId, req.files, userInfo)
+    
+    res.status(StatusCodes.OK).json(updatedCard)
+  } catch (error) { next(error) }
+}
+
 export const cardController = {
   createNew,
   update,
   deleteCard,
-  restore
+  restore,
+  uploadMultipleAttachments
 }

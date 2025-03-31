@@ -9,6 +9,7 @@ import { columnModel } from '~/models/columnModel'
 import { CloudinaryProvider } from '~/providers/CloudinaryProvider'
 import { StatusCodes } from 'http-status-codes'
 import ApiError from '~/utils/ApiError'
+import { S3Provider } from '~/providers/S3Provider'
 
 const createNew = async (reqBody) => {
   try {
@@ -152,9 +153,93 @@ const restore = async (cardId, updateData) => {
   } catch (error) { throw error }
 }
 
+const uploadMultipleAttachments = async (cardId, files, userInfo) => {
+  try {
+    console.log(`Starting uploadMultipleAttachments for cardId: ${cardId}, files count: ${files?.length || 0}`)
+    
+    if (!files || files.length === 0) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, 'No files were uploaded')
+    }
+    
+    // Lấy thông tin card hiện tại
+    const currentCard = await cardModel.findOneById(cardId)
+    if (!currentCard) {
+      throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
+    }
+    
+    console.log(`Card found: ${currentCard._id}, current attachments: ${currentCard.attachments?.length || 0}`)
+    
+    // Mảng lưu các attachment mới
+    const newAttachments = []
+    
+    // Upload từng file lên S3
+    for (const file of files) {
+      try {
+        console.log(`Processing file: ${file.originalname}, size: ${file.size}, type: ${file.mimetype}`)
+        
+        const uploadResult = await S3Provider.uploadFile(
+          file.buffer,
+          file.originalname,
+          'card-attachments'
+        )
+        
+        console.log(`Upload successful for file: ${file.originalname}, url: ${uploadResult.url}`)
+        
+        // Tạo dữ liệu attachment để thêm vào database
+        const attachmentData = {
+          fileName: file.originalname,
+          fileUrl: uploadResult.url,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          uploadedAt: Date.now(),
+          uploadedBy: userInfo._id
+        }
+        
+        newAttachments.push(attachmentData)
+      } catch (uploadError) {
+        console.error(`Failed to upload file ${file.originalname}:`, uploadError)
+        console.error('Upload error details:', {
+          message: uploadError.message, 
+          stack: uploadError.stack,
+          code: uploadError.code,
+          statusCode: uploadError.statusCode
+        })
+      }
+    }
+    
+    if (newAttachments.length === 0) {
+      throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to upload files')
+    }
+    
+    // Tạo mảng attachments mới bằng cách kết hợp attachments hiện tại và mới
+    const updatedAttachments = [...(currentCard.attachments || []), ...newAttachments]
+    
+    console.log(`Updating card with ${newAttachments.length} new attachments, total: ${updatedAttachments.length}`)
+    
+    // Cập nhật card với danh sách attachments mới
+    const updatedCard = await cardModel.update(cardId, { 
+      attachments: updatedAttachments,
+      updatedAt: Date.now()
+    })
+    
+    console.log(`Card updated successfully, id: ${updatedCard._id}`)
+    
+    return updatedCard
+  } catch (error) { 
+    console.error('Error in uploadMultipleAttachments:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      statusCode: error.statusCode
+    })
+    throw error 
+  }
+}
+
 export const cardService = {
   createNew,
   update,
   deleteCard,
-  restore
+  restore,
+  uploadMultipleAttachments
 }
