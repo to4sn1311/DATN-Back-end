@@ -21,6 +21,11 @@ Router.put('/upload-attachments/:id', authMiddleware.isAuthorized, (req, res, ne
   multerUploadMiddleware.uploadAttachment.array('attachmentFiles', 5)(req, res, next)
 }, cardController.uploadMultipleAttachments)
 
+// Routes cho tính năng archive
+Router.put('/:id/archive', authMiddleware.isAuthorized, cardController.archiveCard)
+Router.put('/:id/unarchive', authMiddleware.isAuthorized, cardController.unarchiveCard)
+Router.get('/archived/:boardId', authMiddleware.isAuthorized, cardController.getArchivedCards)
+
 Router.route('/')
   .post(authMiddleware.isAuthorized, cardValidation.createNew, cardController.createNew)
 
@@ -39,5 +44,9 @@ Router.route('/:id')
     cardController.update
   )
   .delete(authMiddleware.isAuthorized, cardController.deleteCard)
+
+// Route để xóa vĩnh viễn card (dành cho board owner)
+Router.route('/:id/permanent')
+  .delete(authMiddleware.isAuthorized, cardController.permanentDeleteCard)
 
 export const cardRoute = Router

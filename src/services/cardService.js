@@ -85,6 +85,98 @@ const deleteCard = async (cardId) => {
   } catch (error) { throw error }
 }
 
+/**
+ * Đánh dấu card là đã được lưu trữ (archive)
+ */
+const archiveCard = async (cardId, userId) => {
+  try {
+    const targetCard = await cardModel.findOneById(cardId)
+    if (!targetCard) {
+      throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
+    }
+
+    // Đánh dấu card là đã lưu trữ
+    const archivedCard = await cardModel.archiveCard(cardId, userId)
+
+    // Xóa cardId khỏi mảng cardOrderIds trong column chứa nó
+    await columnModel.pullCardOrderIds(targetCard)
+
+    return { 
+      archivedCard,
+      archiveResult: 'Card archived successfully!' 
+    }
+  } catch (error) { throw error }
+}
+
+/**
+ * Khôi phục card từ trạng thái lưu trữ về trạng thái bình thường
+ */
+const unarchiveCard = async (cardId, columnId) => {
+  try {
+    const targetCard = await cardModel.findOneById(cardId)
+    if (!targetCard) {
+      throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
+    }
+
+    // Cập nhật lại columnId nếu được cung cấp
+    const updateData = columnId ? { columnId } : {}
+    
+    // Khôi phục card từ trạng thái lưu trữ
+    const unarchivedCard = await cardModel.unarchiveCard(cardId)
+    
+    // Cập nhật dữ liệu khác nếu cần
+    if (Object.keys(updateData).length > 0) {
+      await cardModel.update(cardId, updateData)
+    }
+
+    // Thêm cardId vào mảng cardOrderIds của column
+    await columnModel.pushCardOrderIds(unarchivedCard)
+
+    return {
+      unarchivedCard,
+      unarchiveResult: 'Card unarchived successfully!'
+    }
+  } catch (error) { throw error }
+}
+
+/**
+ * Lấy danh sách card đã được lưu trữ của một board
+ */
+const getArchivedCards = async (boardId) => {
+  try {
+    const archivedCards = await cardModel.getArchivedCards(boardId)
+    return { archivedCards }
+  } catch (error) { throw error }
+}
+
+/**
+ * Xóa vĩnh viễn card khỏi cơ sở dữ liệu (chỉ dành cho board owner)
+ */
+const permanentDeleteCard = async (cardId, userId) => {
+  try {
+    // Tìm card cần xóa
+    const targetCard = await cardModel.findOneById(cardId)
+    if (!targetCard) {
+      throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
+    }
+
+    // Xóa các tệp đính kèm trong card (nếu có)
+    if (targetCard.attachments && targetCard.attachments.length > 0) {
+      // Ở đây bạn có thể thêm code để xóa file từ S3, Cloudinary, hoặc nơi lưu trữ
+      // Ví dụ: await S3Provider.deleteFiles(targetCard.attachments.map(att => att.fileUrl))
+      console.log(`Deleting ${targetCard.attachments.length} attachments from card ${cardId}`)
+    }
+
+    // Xóa card khỏi cơ sở dữ liệu
+    await cardModel.deleteOneById(cardId)
+
+    // Xóa cardId khỏi mảng cardOrderIds trong column chứa nó
+    await columnModel.pullCardOrderIds(targetCard)
+
+    return { deleteResult: 'Card deleted permanently!' }
+  } catch (error) { throw error }
+}
+
 const restore = async (cardId, updateData) => {
   try {
     const targetCard = await cardModel.findOneById(cardId)
@@ -196,5 +288,9 @@ export const cardService = {
   update,
   deleteCard,
   restore,
-  uploadMultipleAttachments
+  uploadMultipleAttachments,
+  permanentDeleteCard,
+  archiveCard,
+  unarchiveCard,
+  getArchivedCards
 }

@@ -40,6 +40,58 @@ const deleteCard = async (req, res, next) => {
   } catch (error) { next(error) }
 }
 
+const permanentDeleteCard = async (req, res, next) => {
+  try {
+    const cardId = req.params.id
+    const userId = req.jwtDecoded._id
+    
+    const result = await cardService.permanentDeleteCard(cardId, userId)
+
+    res.status(StatusCodes.OK).json(result)
+  } catch (error) { next(error) }
+}
+
+/**
+ * Đánh dấu card là đã được lưu trữ
+ */
+const archiveCard = async (req, res, next) => {
+  try {
+    const cardId = req.params.id
+    const userId = req.jwtDecoded._id
+    
+    const result = await cardService.archiveCard(cardId, userId)
+    
+    res.status(StatusCodes.OK).json(result)
+  } catch (error) { next(error) }
+}
+
+/**
+ * Hủy đánh dấu lưu trữ card
+ */
+const unarchiveCard = async (req, res, next) => {
+  try {
+    const cardId = req.params.id
+    const { columnId } = req.body
+    
+    const result = await cardService.unarchiveCard(cardId, columnId)
+    
+    res.status(StatusCodes.OK).json(result)
+  } catch (error) { next(error) }
+}
+
+/**
+ * Lấy danh sách card đã lưu trữ của board
+ */
+const getArchivedCards = async (req, res, next) => {
+  try {
+    const boardId = req.params.boardId
+    
+    const result = await cardService.getArchivedCards(boardId)
+    
+    res.status(StatusCodes.OK).json(result)
+  } catch (error) { next(error) }
+}
+
 const restore = async (req, res, next) => {
   try {
     const cardId = req.params.id
@@ -72,5 +124,9 @@ export const cardController = {
   update,
   deleteCard,
   restore,
-  uploadMultipleAttachments
+  uploadMultipleAttachments,
+  permanentDeleteCard,
+  archiveCard,
+  unarchiveCard,
+  getArchivedCards
 }

@@ -23,6 +23,20 @@ const CARD_COLLECTION_SCHEMA = Joi.object({
   isCompleted: Joi.boolean().default(false),
   startDate: Joi.date().allow(null).default(null),
   dueDate: Joi.date().allow(null).default(null),
+  
+  // Thêm trường archive
+  archived: Joi.boolean().default(false),
+  archivedAt: Joi.date().when('archived', {
+    is: true,
+    then: Joi.date().required(),
+    otherwise: Joi.allow(null)
+  }).default(null),
+  archivedBy: Joi.string().when('archived', {
+    is: true,
+    then: Joi.string().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE),
+    otherwise: Joi.allow(null)
+  }).default(null),
+  
   memberIds: Joi.array().items(
     Joi.string().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE)
   ).default([]),
@@ -91,6 +105,7 @@ const update = async (cardId, updateData) => {
 
     // Đối với những dữ liệu liên quan ObjectId, biến đổi ở đây
     if (updateData.columnId) updateData.columnId = new ObjectId(updateData.columnId)
+    if (updateData.archivedBy) updateData.archivedBy = new ObjectId(updateData.archivedBy)
 
     const result = await GET_DB().collection(CARD_COLLECTION_NAME).findOneAndUpdate(
       { _id: new ObjectId(cardId) },
@@ -192,6 +207,66 @@ const deleteOneById = async (cardId) => {
   } catch (error) { throw new Error(error) }
 }
 
+/**
+ * Đánh dấu một card là đã được lưu trữ
+ */
+const archiveCard = async (cardId, userId) => {
+  try {
+    const result = await GET_DB().collection(CARD_COLLECTION_NAME).findOneAndUpdate(
+      { _id: new ObjectId(cardId) },
+      { 
+        $set: { 
+          archived: true, 
+          archivedAt: new Date(), 
+          archivedBy: new ObjectId(userId),
+          updatedAt: new Date()
+        } 
+      },
+      { returnDocument: 'after' }
+    )
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
+/**
+ * Khôi phục card từ trạng thái lưu trữ
+ */
+const unarchiveCard = async (cardId) => {
+  try {
+    const result = await GET_DB().collection(CARD_COLLECTION_NAME).findOneAndUpdate(
+      { _id: new ObjectId(cardId) },
+      { 
+        $set: { 
+          archived: false,
+          updatedAt: new Date()
+        },
+        $unset: { 
+          archivedAt: '',
+          archivedBy: '' 
+        }
+      },
+      { returnDocument: 'after' }
+    )
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
+/**
+ * Lấy danh sách các card đã được lưu trữ của một board
+ */
+const getArchivedCards = async (boardId) => {
+  try {
+    const result = await GET_DB().collection(CARD_COLLECTION_NAME)
+      .find({ 
+        boardId: new ObjectId(boardId),
+        archived: true,
+        _destroy: false
+      })
+      .toArray()
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
 export const cardModel = {
   CARD_COLLECTION_NAME,
   CARD_COLLECTION_SCHEMA,
@@ -202,5 +277,8 @@ export const cardModel = {
   unshiftNewComment,
   updateMembers,
   updateManyComments,
-  deleteOneById
+  deleteOneById,
+  archiveCard,
+  unarchiveCard,
+  getArchivedCards
 }
