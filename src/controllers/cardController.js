@@ -3,38 +3,98 @@
  * YouTube: https://youtube.com/@trungquandev
  * "A bit of fragrance clings to the hand that gives flowers!"
  */
+
 import { StatusCodes } from 'http-status-codes'
 import { cardService } from '~/services/cardService'
+import { boardService } from '~/services/boardService'
+import { userService } from '~/services/userService'
 
 const createNew = async (req, res, next) => {
   try {
-    const createdCard = await cardService.createNew(req.body)
+    const userId = req.jwtDecoded._id
+    const createdCard = await cardService.createNew(req.body, userId)
     res.status(StatusCodes.CREATED).json(createdCard)
+  } catch (error) { next(error) }
+}
+
+const getDetails = async (req, res, next) => {
+  try {
+    const cardId = req.params.id
+    const card = await cardService.getDetails(cardId)
+    res.status(StatusCodes.OK).json(card)
   } catch (error) { next(error) }
 }
 
 const update = async (req, res, next) => {
   try {
+    const userId = req.jwtDecoded._id
     const cardId = req.params.id
-    const cardCoverFile = req.file
-    
-    // Thêm thông tin người đang thực hiện request làm người gán task
-    if (req.body.incomingMemberInfo) {
-      req.body.assignedBy = req.jwtDecoded ? req.jwtDecoded.displayName : 'Someone'
+    const updatedCard = await cardService.update(cardId, req.body)
+
+    // Kiểm tra nếu có thành viên mới được thêm vào card
+    if (req.body.incomingMemberInfo && req.body.incomingMemberInfo.action === 'ADD') {
+      try {
+        // Lấy thông tin của user gán nhiệm vụ từ jwt token
+        const assigner = {
+          displayName: req.jwtDecoded.displayName || req.jwtDecoded.username
+        }
+        
+        // Lấy thông tin của board chứa card
+        const card = await cardService.getDetails(cardId)
+        const board = await boardService.getDetails(card.boardId)
+        
+        // Lấy thông tin người được gán nhiệm vụ
+        const assigneeId = req.body.incomingMemberInfo.userId
+        
+        // Gửi thông báo qua socket.io
+        global.io.emit('BE_CARD_ASSIGNMENT_NOTIFICATION', {
+          userId: assigneeId,
+          assignedById: userId,
+          assignedBy: assigner.displayName,
+          cardId: cardId,
+          cardTitle: card.title,
+          boardId: card.boardId,
+          boardTitle: board.title
+        })
+      } catch (error) {
+        console.error('Lỗi khi gửi thông báo gán nhiệm vụ:', error)
+        // Không throw lỗi để không ảnh hưởng đến việc cập nhật card
+      }
     }
-    
-    const updatedCard = await cardService.update(cardId, req.body, cardCoverFile)
 
     res.status(StatusCodes.OK).json(updatedCard)
-  } catch (error) {
-    next(error)
-  }
+  } catch (error) { next(error) }
 }
 
+const moveCardToDifferentColumn = async (req, res, next) => {
+  try {
+    const result = await cardService.moveCardToDifferentColumn(
+      req.body.currentCardId,
+      req.body.prevColumnId,
+      req.body.nextColumnId,
+      req.body.prevCardOrderIds,
+      req.body.nextCardOrderIds
+    )
+
+    res.status(StatusCodes.OK).json(result)
+  } catch (error) { next(error) }
+}
+
+// API xóa một card (do FE đang dùng API này, nhưng thực chất là archive card chứ không xóa hoàn toàn)
 const deleteCard = async (req, res, next) => {
   try {
     const cardId = req.params.id
     const result = await cardService.deleteCard(cardId)
+
+    res.status(StatusCodes.OK).json(result)
+  } catch (error) { next(error) }
+}
+
+// API khôi phục một card đã bị archive
+const restoreCard = async (req, res, next) => {
+  try {
+    const cardId = req.params.id
+    const result = await cardService.restoreCard(cardId, req.body)
 
     res.status(StatusCodes.OK).json(result)
   } catch (error) { next(error) }
@@ -121,12 +181,15 @@ const uploadMultipleAttachments = async (req, res, next) => {
 
 export const cardController = {
   createNew,
+  getDetails,
   update,
+  moveCardToDifferentColumn,
   deleteCard,
-  restore,
-  uploadMultipleAttachments,
+  restoreCard,
   permanentDeleteCard,
   archiveCard,
   unarchiveCard,
-  getArchivedCards
+  getArchivedCards,
+  restore,
+  uploadMultipleAttachments
 }
