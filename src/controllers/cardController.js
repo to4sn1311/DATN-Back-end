@@ -8,6 +8,7 @@ import { StatusCodes } from 'http-status-codes'
 import { cardService } from '~/services/cardService'
 import { boardService } from '~/services/boardService'
 import { userService } from '~/services/userService'
+import { ApiError } from '~/utils/ApiError'
 
 const createNew = async (req, res, next) => {
   try {
@@ -29,7 +30,10 @@ const update = async (req, res, next) => {
   try {
     const userId = req.jwtDecoded._id
     const cardId = req.params.id
-    const updatedCard = await cardService.update(cardId, req.body)
+    const file = req.file 
+    
+    // Truyền cả req.body, file, và userId vào service
+    const updatedCard = await cardService.update(cardId, req.body, file, userId)
 
     // Kiểm tra nếu có thành viên mới được thêm vào card
     if (req.body.incomingMemberInfo && req.body.incomingMemberInfo.action === 'ADD') {
@@ -161,20 +165,47 @@ const restore = async (req, res, next) => {
   } catch (error) { next(error) }
 }
 
-const uploadMultipleAttachments = async (req, res, next) => {
+// Hàm controller mới để xử lý thêm attachments
+const addAttachments = async (req, res, next) => {
   try {
     const cardId = req.params.id
-    const userInfo = req.jwtDecoded
-    
-    if (!req.files || req.files.length === 0) {
-      return res.status(StatusCodes.BAD_REQUEST).json({
-        errors: 'Không có tệp đính kèm nào được tải lên'
-      })
+    const userInfo = req.jwtDecoded // Lấy thông tin user đã xác thực
+    const files = req.files // Lấy mảng files từ multer
+
+    if (!files || files.length === 0) {
+      throw new ApiError(StatusCodes.BAD_REQUEST, 'No files were uploaded')
     }
+
+    const updatedCard = await cardService.addAttachments(cardId, files, userInfo)
+    res.status(StatusCodes.OK).json(updatedCard)
+  } catch (error) {
+    next(error)
+  }
+}
+
+// Gắn Label vào Card
+const addLabelToCard = async (req, res, next) => {
+  try {
+    const { cardId } = req.params
+    const { labelId } = req.body // Lấy labelId từ body
+    const userId = req.jwtDecoded._id
     
-    // Gọi service để xử lý upload nhiều file
-    const updatedCard = await cardService.uploadMultipleAttachments(cardId, req.files, userInfo)
-    
+    if (!labelId) {
+       throw new ApiError(StatusCodes.BAD_REQUEST, 'labelId is required in the request body')
+    }
+
+    const updatedCard = await cardService.addLabelToCard(cardId, labelId, userId)
+    res.status(StatusCodes.OK).json(updatedCard)
+  } catch (error) { next(error) }
+}
+
+// Gỡ Label khỏi Card
+const removeLabelFromCard = async (req, res, next) => {
+  try {
+    const { cardId, labelId } = req.params // Lấy labelId từ params
+    const userId = req.jwtDecoded._id
+
+    const updatedCard = await cardService.removeLabelFromCard(cardId, labelId, userId)
     res.status(StatusCodes.OK).json(updatedCard)
   } catch (error) { next(error) }
 }
@@ -191,5 +222,7 @@ export const cardController = {
   unarchiveCard,
   getArchivedCards,
   restore,
-  uploadMultipleAttachments
+  addAttachments,
+  addLabelToCard,
+  removeLabelFromCard
 }

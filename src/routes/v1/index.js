@@ -13,6 +13,7 @@ import { userRoute } from './userRoute.js'
 import { invitationRoute } from './invitationRoute.js'
 import { uploadRoute } from './upload.route.js'
 import { notificationRoute } from './notificationRoute.js'
+import { labelRoute } from './labelRoute.js'
 
 const Router = express.Router()
 
@@ -39,10 +40,13 @@ Router.use('/users', userRoute)
 /** Invitation APIs */
 Router.use('/invitations', invitationRoute)
 
-/** Upload APIs */
-Router.use('/upload', uploadRoute)
-
 /** Notification APIs */
 Router.use('/notifications', notificationRoute)
+
+/** Label APIs */
+Router.use('/labels', labelRoute)
+
+/** Upload APIs */
+Router.use('/upload', uploadRoute)
 
 export const APIs_V1 = Router

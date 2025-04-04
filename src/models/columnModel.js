@@ -13,7 +13,7 @@ import { OBJECT_ID_RULE, OBJECT_ID_RULE_MESSAGE } from '~/utils/validators'
 const COLUMN_COLLECTION_NAME = 'columns'
 const COLUMN_COLLECTION_SCHEMA = Joi.object({
   boardId: Joi.string().required().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE),
-  title: Joi.string().required().min(3).max(50).trim().strict(),
+  title: Joi.string().required().min(3).max(255).trim().strict(),
 
   // Lưu ý các item trong mảng cardOrderIds là ObjectId nên cần thêm pattern cho chuẩn nhé, (lúc quay video số 57 mình quên nhưng sang đầu video số 58 sẽ có nhắc lại về cái này.)
   cardOrderIds: Joi.array().items(
@@ -49,6 +49,16 @@ const createNew = async (data) => {
 const findOneById = async (columnId) => {
   try {
     const result = await GET_DB().collection(COLUMN_COLLECTION_NAME).findOne({ _id: new ObjectId(columnId) })
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
+// Lấy tất cả columns thuộc về một board
+const findByBoardId = async (boardId) => {
+  try {
+    const result = await GET_DB().collection(COLUMN_COLLECTION_NAME).find({
+      boardId: new ObjectId(boardId)
+    }).toArray()
     return result
   } catch (error) { throw new Error(error) }
 }
@@ -125,9 +135,10 @@ export const columnModel = {
   COLUMN_COLLECTION_SCHEMA,
   createNew,
   findOneById,
+  findByBoardId,
   pushCardOrderIds,
   pullCardOrderIds,
   update,
-  deleteOneById,
+  deleteOneById
   // pullCardOrderIds
 }

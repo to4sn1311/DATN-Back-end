@@ -12,14 +12,24 @@ Router.put('/update-cover/:id', authMiddleware.isAuthorized, (req, res, next) =>
 }, cardController.update)
 
 // Middleware xử lý upload single file đính kèm
-Router.put('/update-attachment/:id', authMiddleware.isAuthorized, (req, res, next) => {
-  multerUploadMiddleware.uploadAttachment.single('attachmentFile')(req, res, next)
-}, cardController.update)
+// Router.put('/update-attachment/:id', authMiddleware.isAuthorized, (req, res, next) => {
+//   multerUploadMiddleware.uploadAttachment.single('attachmentFile')(req, res, next)
+// }, cardController.update)
 
 // Middleware xử lý upload nhiều file đính kèm cùng lúc
-Router.put('/upload-attachments/:id', authMiddleware.isAuthorized, (req, res, next) => {
-  multerUploadMiddleware.uploadAttachment.array('attachmentFiles', 5)(req, res, next)
-}, cardController.uploadMultipleAttachments)
+// Router.put('/upload-attachments/:id', authMiddleware.isAuthorized, (req, res, next) => {
+//   multerUploadMiddleware.uploadAttachment.array('attachmentFiles', 5)(req, res, next)
+// }, cardController.uploadMultipleAttachments)
+
+// *** ROUTE MỚI ĐỂ THÊM ATTACHMENTS (1 hoặc nhiều) ***
+Router.post('/:id/attachments', 
+  authMiddleware.isAuthorized, 
+  (req, res, next) => {
+    // Sử dụng middleware uploadAttachment nhưng với phương thức array và tên field mới
+    multerUploadMiddleware.uploadAttachment.array('attachments', 5)(req, res, next) // Field name là 'attachments'
+  }, 
+  cardController.addAttachments // Gọi controller mới
+)
 
 // Routes cho tính năng archive
 Router.put('/:id/archive', authMiddleware.isAuthorized, cardController.archiveCard)
@@ -37,16 +47,28 @@ Router.route('/:id/restore')
   )
 
 Router.route('/:id')
-  .put(
-    authMiddleware.isAuthorized,
-    multerUploadMiddleware.upload.single('cardCover'),
-    cardValidation.update,
-    cardController.update
-  )
-  .delete(authMiddleware.isAuthorized, cardController.deleteCard)
+  .get(cardController.getDetails)
+  .put(authMiddleware.isAuthorized, cardValidation.update, cardController.update) // Update Card
+  .delete(authMiddleware.isAuthorized, cardController.deleteCard) // Tạm thời dùng deleteCard (lưu trữ)
 
-// Route để xóa vĩnh viễn card (dành cho board owner)
+// Archive & Restore
+Router.route('/:id/archive')
+  .put(authMiddleware.isAuthorized, cardController.archiveCard)
+Router.route('/:id/unarchive')
+  .put(authMiddleware.isAuthorized, cardController.unarchiveCard)
+
+// Permanent Delete (Board Owner only)
 Router.route('/:id/permanent')
   .delete(authMiddleware.isAuthorized, cardController.permanentDeleteCard)
+
+// Thêm các route cho label
+Router.route('/:cardId/labels')
+  .post(authMiddleware.isAuthorized, cardValidation.validateLabelAction, cardController.addLabelToCard)
+
+Router.route('/:cardId/labels/:labelId')
+  .delete(authMiddleware.isAuthorized, cardController.removeLabelFromCard)
+
+// Quản lý thành viên của Card
+Router.route('/:cardId/members')
 
 export const cardRoute = Router

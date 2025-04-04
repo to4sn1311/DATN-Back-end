@@ -101,6 +101,13 @@ const getDetails = async (userId, boardId) => {
         from: cardModel.CARD_COLLECTION_NAME,
         localField: '_id',
         foreignField: 'boardId',
+        pipeline: [
+          { $match: {
+            $expr: { $eq: ['$boardId', '$$board_id'] },
+            archived: { $ne: true }
+          } }
+        ],
+        let: { board_id: '$_id' },
         as: 'cards'
       } },
       { $lookup: {

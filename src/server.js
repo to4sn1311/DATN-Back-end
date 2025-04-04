@@ -31,12 +31,13 @@ const START_SERVER = () => {
   // Xử lý CORS
   app.use(cors(corsOptions))
 
-  // Enable req.body json data
-  app.use(express.json())
+  // Enable req.body json data with increased limit
+  app.use(express.json({ limit: '50mb' }))
+  app.use(express.urlencoded({ limit: '50mb', extended: true })) // Thêm cả urlencoded với limit
 
   // Use APIs V1
   app.use('/v1', APIs_V1)
-  
+
   // Thêm route cho frontend với cấu trúc URL "/api/..."
   app.use('/api', APIs_V1)
 

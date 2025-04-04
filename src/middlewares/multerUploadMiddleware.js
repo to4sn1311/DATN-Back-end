@@ -45,4 +45,7 @@ const uploadAttachment = multer({
   fileFilter: attachmentFileFilter
 })
 
-export const multerUploadMiddleware = { upload, uploadAttachment }
+export const multerUploadMiddleware = {
+  upload, // Dùng cho cover: .single('cardCover')
+  uploadAttachment // Dùng cho attachments: .array('attachments', 5)
+}

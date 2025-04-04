@@ -4,6 +4,9 @@ import { CloudinaryProvider } from '~/providers/CloudinaryProvider'
 import { StatusCodes } from 'http-status-codes'
 import ApiError from '~/utils/ApiError'
 import { S3Provider } from '~/providers/S3Provider'
+import { ObjectId } from 'mongodb'
+import { userModel } from '~/models/userModel'
+import { labelModel } from '~/models/labelModel'
 
 const createNew = async (reqBody) => {
   try {
@@ -23,47 +26,82 @@ const createNew = async (reqBody) => {
   } catch (error) { throw error }
 }
 
-const update = async (cardId, reqBody, cardCoverFile) => {
+const update = async (cardId, reqBody, uploadedFile, userId) => {
   try {
     const updateData = {
       ...reqBody,
       updatedAt: Date.now()
     }
-
     let updatedCard = {}
+    let assigner = null // Biến lưu thông tin người gán
 
-    if (cardCoverFile) {
-      const uploadResult = await CloudinaryProvider.streamUpload(cardCoverFile.buffer, 'card-cover')
+    // Lấy thông tin user hiện tại (người thực hiện hành động) từ DB
+    // để có displayName gửi kèm trong notification
+    if (userId) {
+      assigner = await userModel.findOneById(userId)
+    }
+
+    if (uploadedFile && uploadedFile.fieldname === 'cardCover') {
+      const uploadResult = await S3Provider.uploadFile(uploadedFile.buffer, uploadedFile.originalname, 'card-cover')
       updatedCard = await cardModel.update(cardId, {
-        cover: uploadResult.secure_url
+        cover: uploadResult.url,
+        updatedAt: Date.now()
       })
     } else if (reqBody.incomingMemberInfo) {
-      // Nếu có thông tin về thành viên, sử dụng hàm updateMembers chuyên biệt
       updatedCard = await cardModel.updateMembers(cardId, reqBody.incomingMemberInfo)
       
-      // Nếu là hành động thêm thành viên, gửi thông báo cho người dùng đó
       if (updatedCard.isAddAction) {
-        // Lấy thông tin chi tiết của card để gửi thông báo
         const card = await cardModel.findOneById(cardId)
-        
-        // Cần import socketIoInstance từ thư mục sockets hoặc từ nơi khác
-        // Để đơn giản, chúng ta sẽ sử dụng biến io toàn cục được export trong server.js
-        // Emit sự kiện socket để thông báo cho frontend
-        if (global.io) {
+        if (global.io && assigner) { // Kiểm tra assigner tồn tại
           global.io.emit('BE_CARD_ASSIGNMENT_NOTIFICATION', {
             userId: reqBody.incomingMemberInfo.userId,
+            assignedById: assigner._id, // Thêm assignedById
+            assignedBy: assigner.displayName || assigner.username, // Sử dụng displayName từ assigner
             cardId: cardId,
             cardTitle: card.title,
             boardId: card.boardId,
-            columnId: card.columnId,
-            assignedBy: reqBody.assignedBy || 'Someone'
+            columnId: card.columnId
           })
         }
       }
+    } else if (reqBody.commentToAdd) {
+      const commentData = {
+        ...reqBody.commentToAdd,
+        userId: new ObjectId(userId), // Dùng userId từ tham số
+        userAvatar: assigner?.avatar, // Lấy avatar từ assigner
+        userDisplayName: assigner?.displayName || assigner?.username, // Lấy tên từ assigner
+        commentedAt: Date.now()
+      }
+      updatedCard = await cardModel.unshiftNewComment(cardId, commentData)
+      
+      // Emit sự kiện comment mới sau khi thêm thành công
+      if (global.io && updatedCard) {
+        const card = await cardModel.findOneById(cardId) // Lấy lại card để có members
+        global.io.emit('BE_NEW_COMMENT_NOTIFICATION', {
+          userId: userId,
+          userName: commentData.userDisplayName,
+          cardId: cardId,
+          cardTitle: updatedCard.title,
+          boardId: updatedCard.boardId,
+          cardMembers: card.memberIds || [] // Gửi kèm memberIds
+          // mentionedUserIds: [] // Cần logic để parse @mention nếu muốn
+        })
+      }
+    } else if (reqBody.attachmentIdToRemove) {
+      const fileUrlToRemove = reqBody.attachmentIdToRemove
+      updatedCard = await cardModel.pullAttachment(cardId, fileUrlToRemove)
+      // Cần thêm logic xóa file khỏi S3/Cloudinary ở đây nếu cần
+      // await S3Provider.deleteFileByUrl(fileUrlToRemove)
+    } else if (uploadedFile && uploadedFile.fieldname === 'attachmentFile') {
+      // ... (logic upload attachment đơn lẻ)
     } else {
-      updatedCard = await cardModel.update(cardId, updateData)
+      const { attachmentIdToRemove, ...restUpdateData } = updateData // userId không còn trong updateData
+      if (Object.keys(restUpdateData).length > 0) { 
+           updatedCard = await cardModel.update(cardId, restUpdateData)
+      } else {
+           updatedCard = await cardModel.findOneById(cardId)
+      }
     }
-
     return updatedCard
   } catch (error) { throw error }
 }
@@ -200,97 +238,130 @@ const restore = async (cardId, updateData) => {
   } catch (error) { throw error }
 }
 
-const uploadMultipleAttachments = async (cardId, files, userInfo) => {
+// Hàm mới để xử lý thêm attachments (thay thế uploadMultipleAttachments)
+const addAttachments = async (cardId, files, userInfo) => {
   try {
-    console.log(`Starting uploadMultipleAttachments for cardId: ${cardId}, files count: ${files?.length || 0}`)
-    
     if (!files || files.length === 0) {
       throw new ApiError(StatusCodes.BAD_REQUEST, 'No files were uploaded')
     }
-    
-    // Lấy thông tin card hiện tại
+
     const currentCard = await cardModel.findOneById(cardId)
     if (!currentCard) {
       throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
     }
-    
-    console.log(`Card found: ${currentCard._id}, current attachments: ${currentCard.attachments?.length || 0}`)
-    
-    // Mảng lưu các attachment mới
-    const newAttachments = []
-    
-    // Upload từng file lên S3
+
+    const newAttachmentsData = []
     for (const file of files) {
       try {
-        console.log(`Processing file: ${file.originalname}, size: ${file.size}, type: ${file.mimetype}`)
-        
         const uploadResult = await S3Provider.uploadFile(
           file.buffer,
           file.originalname,
           'card-attachments'
         )
-        
-        console.log(`Upload successful for file: ${file.originalname}, url: ${uploadResult.url}`)
-        
-        // Tạo dữ liệu attachment để thêm vào database
-        const attachmentData = {
+        newAttachmentsData.push({
           fileName: file.originalname,
           fileUrl: uploadResult.url,
           fileType: file.mimetype,
           fileSize: file.size,
           uploadedAt: Date.now(),
-          uploadedBy: userInfo._id
-        }
-        
-        newAttachments.push(attachmentData)
-      } catch (uploadError) {
-        console.error(`Failed to upload file ${file.originalname}:`, uploadError)
-        console.error('Upload error details:', {
-          message: uploadError.message, 
-          stack: uploadError.stack,
-          code: uploadError.code,
-          statusCode: uploadError.statusCode
+          uploadedBy: userInfo._id // Lấy userId từ thông tin user đã xác thực
         })
+      } catch (uploadError) {
+        // Log lỗi upload từng file nhưng không dừng toàn bộ quá trình
+        console.error(`Failed to upload file ${file.originalname}:`, uploadError)
       }
     }
-    
-    if (newAttachments.length === 0) {
-      throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to upload files')
+
+    // Chỉ cập nhật DB nếu có ít nhất 1 file upload thành công
+    if (newAttachmentsData.length > 0) {
+      // Gọi hàm model mới để push nhiều attachments cùng lúc
+      const updatedCard = await cardModel.pushMultipleAttachments(cardId, newAttachmentsData)
+      return updatedCard
+    } else {
+      // Nếu không có file nào upload thành công, trả về card hiện tại
+      return currentCard 
     }
-    
-    // Tạo mảng attachments mới bằng cách kết hợp attachments hiện tại và mới
-    const updatedAttachments = [...(currentCard.attachments || []), ...newAttachments]
-    
-    console.log(`Updating card with ${newAttachments.length} new attachments, total: ${updatedAttachments.length}`)
-    
-    // Cập nhật card với danh sách attachments mới
-    const updatedCard = await cardModel.update(cardId, { 
-      attachments: updatedAttachments,
-      updatedAt: Date.now()
-    })
-    
-    console.log(`Card updated successfully, id: ${updatedCard._id}`)
-    
-    return updatedCard
+
   } catch (error) { 
-    console.error('Error in uploadMultipleAttachments:', {
-      message: error.message,
-      stack: error.stack,
-      code: error.code,
-      statusCode: error.statusCode
-    })
-    throw error 
+     // Ném lỗi ra ngoài để controller xử lý
+     throw new ApiError(error.statusCode || StatusCodes.INTERNAL_SERVER_ERROR, error.message || 'Error adding attachments')
   }
+}
+
+// Gắn Label vào Card
+const addLabelToCard = async (cardId, labelId, userId) => {
+  try {
+    // Validate card và label tồn tại, và thuộc cùng board (nếu cần)
+    const card = await cardModel.findOneById(cardId)
+    const label = await labelModel.findOneById(labelId)
+    if (!card || !label) {
+      throw new ApiError(StatusCodes.NOT_FOUND, 'Card or Label not found!')
+    }
+    if (card.boardId.toString() !== label.boardId.toString()) {
+       throw new ApiError(StatusCodes.BAD_REQUEST, 'Card and Label do not belong to the same board!')
+    }
+    // Kiểm tra quyền (ví dụ: chỉ member của board mới được gắn label)
+
+    // Kiểm tra xem label đã được gắn chưa để tránh trùng lặp
+    if (card.labelIds?.map(id => id.toString()).includes(labelId)) {
+        // Không làm gì cả hoặc trả về thông báo đã tồn tại
+        console.log(`Label ${labelId} already added to card ${cardId}`)
+        return card // Trả về card hiện tại
+    }
+
+    await cardModel.pushLabelId(cardId, labelId)
+    const updatedCard = await cardModel.findOneById(cardId) // Lấy lại card đã cập nhật
+
+    // Cần emit socket event cập nhật card ở đây
+
+    return updatedCard
+  } catch (error) { throw error }
+}
+
+// Gỡ Label khỏi Card
+const removeLabelFromCard = async (cardId, labelId, userId) => {
+  try {
+    // Validate card và label tồn tại
+    const card = await cardModel.findOneById(cardId)
+    // Không cần validate label vì chỉ cần card tồn tại để $pull
+    if (!card) {
+      throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
+    }
+     // Kiểm tra quyền
+
+    await cardModel.pullLabelId(cardId, labelId)
+    const updatedCard = await cardModel.findOneById(cardId) // Lấy lại card đã cập nhật
+
+    // Cần emit socket event cập nhật card ở đây
+
+    return updatedCard
+  } catch (error) { throw error }
+}
+
+/**
+ * Lấy chi tiết thông tin của một card theo ID
+ */
+const getDetails = async (cardId) => {
+  try {
+    const card = await cardModel.findOneById(cardId)
+    if (!card) {
+      throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
+    }
+    return card
+  } catch (error) { throw error }
 }
 
 export const cardService = {
   createNew,
   update,
+  getDetails,
   deleteCard,
-  restore,
-  uploadMultipleAttachments,
-  permanentDeleteCard,
   archiveCard,
   unarchiveCard,
-  getArchivedCards
+  getArchivedCards,
+  permanentDeleteCard,
+  restore,
+  addAttachments,
+  addLabelToCard,
+  removeLabelFromCard
 }
