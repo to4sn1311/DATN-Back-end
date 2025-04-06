@@ -61,6 +61,16 @@ const findOneByEmail = async (emailValue) => {
   } catch (error) { throw new Error(error) }
 }
 
+// Tìm danh sách users bằng mảng IDs
+const findUsersByIds = async (userIds) => {
+  try {
+    const result = await GET_DB().collection(USER_COLLECTION_NAME).find({
+      _id: { $in: userIds.map(id => new ObjectId(id)) }
+    }).toArray()
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
 const update = async (userId, updateData) => {
   try {
     // Lọc những field mà chúng ta không cho phép cập nhật linh tinh
@@ -86,5 +96,6 @@ export const userModel = {
   createNew,
   findOneById,
   findOneByEmail,
+  findUsersByIds,
   update
 }

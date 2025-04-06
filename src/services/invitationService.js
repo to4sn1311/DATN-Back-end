@@ -47,6 +47,12 @@ const createNewBoardInvitation = async (reqBody, inviterId) => {
       inviter: pickUser(inviter),
       invitee: pickUser(invitee)
     }
+    
+    // Emit sự kiện socket cho người được mời
+    if (global.io && resInvitation) {
+      global.io.emit('BE_USER_INVITED_TO_BOARD', resInvitation)
+    }
+    
     return resInvitation
   } catch (error) { throw error }
 }

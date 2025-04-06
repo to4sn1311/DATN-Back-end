@@ -17,7 +17,7 @@ import { pagingSkipValue } from '~/utils/algorithms'
 // Define Collection (Name & Schema)
 const BOARD_COLLECTION_NAME = 'boards'
 const BOARD_COLLECTION_SCHEMA = Joi.object({
-  title: Joi.string().required().min(3).max(50).trim().strict(),
+  title: Joi.string().required().min(3).max(100).trim().strict(),
   slug: Joi.string().required().min(3).trim().strict(),
   description: Joi.string().required().min(3).max(255).trim().strict(),
 
@@ -101,6 +101,13 @@ const getDetails = async (userId, boardId) => {
         from: cardModel.CARD_COLLECTION_NAME,
         localField: '_id',
         foreignField: 'boardId',
+        pipeline: [
+          { $match: {
+            $expr: { $eq: ['$boardId', '$$board_id'] },
+            archived: { $ne: true }
+          } }
+        ],
+        let: { board_id: '$_id' },
         as: 'cards'
       } },
       { $lookup: {

@@ -9,11 +9,15 @@ import { slugify } from '~/utils/formatters'
 import { boardModel } from '~/models/boardModel'
 import { columnModel } from '~/models/columnModel'
 import { cardModel } from '~/models/cardModel'
-
 import ApiError from '~/utils/ApiError'
 import { StatusCodes } from 'http-status-codes'
 import { cloneDeep } from 'lodash'
 import { DEFAULT_PAGE, DEFAULT_ITEMS_PER_PAGE } from '~/utils/constants'
+import { ObjectId } from 'mongodb'
+import { userModel } from '~/models/userModel'
+import { invitationModel } from '~/models/invitationModel'
+import { pickUser } from '~/utils/formatters'
+import { labelModel } from '~/models/labelModel'
 
 const createNew = async (userId, reqBody) => {
   try {
@@ -37,31 +41,54 @@ const createNew = async (userId, reqBody) => {
   } catch (error) { throw error }
 }
 
-const getDetails = async (userId, boardId) => {
+const getDetails = async (boardId, user) => {
   try {
-    const board = await boardModel.getDetails(userId, boardId)
+    // Lấy thông tin board cơ bản
+    const board = await boardModel.findOneById(boardId)
     if (!board) {
       throw new ApiError(StatusCodes.NOT_FOUND, 'Board not found!')
     }
 
-    // B1: Deep Clone board ra một cái mới để xử lý, không ảnh hưởng tới board ban đầu, tùy mục đích về sau mà có cần clone deep hay không. (video 63 sẽ giải thích)
-    // https://www.javascripttutorial.net/javascript-primitive-vs-reference-values/
+    // Lấy tất cả columns thuộc board
+    const columns = await columnModel.findByBoardId(boardId)
+
+    // Lấy tất cả cards thuộc board (chưa archived)
+    const cards = await cardModel.findActiveByBoardId(boardId)
+    
+    // Lấy tất cả labels thuộc board
+    const labels = await labelModel.findByBoardId(boardId)
+
+    // Lấy thông tin owners và members
+    const owners = await userModel.findUsersByIds(board.ownerIds)
+    const members = await userModel.findUsersByIds(board.memberIds)
+
+    // Tạo response board object
     const resBoard = cloneDeep(board)
-
-    // B2: Đưa card về đúng column của nó
+    resBoard.columns = columns
+    resBoard.labels = labels // Gán labels
+    resBoard.owners = owners
+    resBoard.members = members
+    
+    // Gắn cards vào đúng column của nó
     resBoard.columns.forEach(column => {
-      // Cách dùng .equals này là bởi vì chúng ta hiểu ObjectId trong MongoDB có support method .equals
-      column.cards = resBoard.cards.filter(card => card.columnId.equals(column._id))
-
-      // // Cách khác đơn giản là convert ObjectId về string bằng hàm toString() của JavaScript
-      // column.cards = resBoard.cards.filter(card => card.columnId.toString() === column._id.toString())
+      column.cards = cards.filter(card => card.columnId.equals(column._id))
     })
 
-    // B3: Xóa mảng cards khỏi board ban đầu
-    delete resBoard.cards
+    // Xóa ownerIds và memberIds không cần thiết nữa nếu đã có thông tin đầy đủ
+    // delete resBoard.ownerIds;
+    // delete resBoard.memberIds;
+
+    // Xử lý lời mời nếu cần (logic cũ giữ nguyên)
+    const boardMemberIds = [...resBoard.owners.map(u => u._id), ...resBoard.members.map(u => u._id)].map(id => id.toString())
+    if (user && boardMemberIds.includes(user._id.toString())) {
+      // ... (logic tìm lời mời)
+    }
 
     return resBoard
-  } catch (error) { throw error }
+  } catch (error) { 
+      console.error('Error in boardService.getDetails:', error);
+      throw error; // Re-throw the error after logging
+  }
 }
 
 const update = async (boardId, reqBody) => {

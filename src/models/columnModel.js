@@ -13,7 +13,7 @@ import { OBJECT_ID_RULE, OBJECT_ID_RULE_MESSAGE } from '~/utils/validators'
 const COLUMN_COLLECTION_NAME = 'columns'
 const COLUMN_COLLECTION_SCHEMA = Joi.object({
   boardId: Joi.string().required().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE),
-  title: Joi.string().required().min(3).max(50).trim().strict(),
+  title: Joi.string().required().min(3).max(255).trim().strict(),
 
   // Lưu ý các item trong mảng cardOrderIds là ObjectId nên cần thêm pattern cho chuẩn nhé, (lúc quay video số 57 mình quên nhưng sang đầu video số 58 sẽ có nhắc lại về cái này.)
   cardOrderIds: Joi.array().items(
@@ -53,12 +53,35 @@ const findOneById = async (columnId) => {
   } catch (error) { throw new Error(error) }
 }
 
+// Lấy tất cả columns thuộc về một board
+const findByBoardId = async (boardId) => {
+  try {
+    const result = await GET_DB().collection(COLUMN_COLLECTION_NAME).find({
+      boardId: new ObjectId(boardId)
+    }).toArray()
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
 // Nhiệm vụ của func này là push một cái giá trị cardId vào cuối mảng cardOrderIds
 const pushCardOrderIds = async (card) => {
   try {
     const result = await GET_DB().collection(COLUMN_COLLECTION_NAME).findOneAndUpdate(
       { _id: new ObjectId(card.columnId) },
       { $push: { cardOrderIds: new ObjectId(card._id) } },
+      { returnDocument: 'after' }
+    )
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
+// Lấy một phần tử cardId ra khỏi mảng cardOrderIds
+// Dùng $pull trong mongodb để lấy một phần tử ra khỏi mảng rồi xóa nó đi
+const pullCardOrderIds = async (card) => {
+  try {
+    const result = await GET_DB().collection(COLUMN_COLLECTION_NAME).findOneAndUpdate(
+      { _id: new ObjectId(card.columnId) },
+      { $pull: { cardOrderIds: new ObjectId(card._id) } },
       { returnDocument: 'after' }
     )
     return result
@@ -95,12 +118,27 @@ const deleteOneById = async (columnId) => {
   } catch (error) { throw new Error(error) }
 }
 
+// Lấy một phần tử cardId ra khỏi mảng cardOrderIds
+// const pullCardOrderIds = async (card) => {
+//   try {
+//     const result = await GET_DB().collection(COLUMN_COLLECTION_NAME).findOneAndUpdate(
+//       { _id: new ObjectId(card.columnId) },
+//       { $pull: { cardOrderIds: new ObjectId(card._id) } },
+//       { returnDocument: 'after' }
+//     )
+//     return result
+//   } catch (error) { throw new Error(error) }
+// }
+
 export const columnModel = {
   COLUMN_COLLECTION_NAME,
   COLUMN_COLLECTION_SCHEMA,
   createNew,
   findOneById,
+  findByBoardId,
   pushCardOrderIds,
+  pullCardOrderIds,
   update,
   deleteOneById
+  // pullCardOrderIds
 }
