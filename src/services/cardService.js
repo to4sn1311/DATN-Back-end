@@ -7,6 +7,7 @@ import { S3Provider } from '~/providers/S3Provider'
 import { ObjectId } from 'mongodb'
 import { userModel } from '~/models/userModel'
 import { labelModel } from '~/models/labelModel'
+import { CARD_MEMBER_ACTIONS } from '~/utils/constants'
 
 const createNew = async (reqBody) => {
   try {
@@ -36,64 +37,244 @@ const update = async (cardId, reqBody, uploadedFile, userId) => {
     let assigner = null // Biến lưu thông tin người gán
 
     // Lấy thông tin user hiện tại (người thực hiện hành động) từ DB
-    // để có displayName gửi kèm trong notification
+    // để có displayName gửi kèm trong notification và activities
     if (userId) {
       assigner = await userModel.findOneById(userId)
     }
 
-    if (uploadedFile && uploadedFile.fieldname === 'cardCover') {
-      const uploadResult = await S3Provider.uploadFile(uploadedFile.buffer, uploadedFile.originalname, 'card-cover')
-      updatedCard = await cardModel.update(cardId, {
-        cover: uploadResult.url,
-        updatedAt: Date.now()
-      })
+    // Hàm helper để tạo và lưu hoạt động vào card
+    const trackActivity = async (cardId, action, content) => {
+      if (!assigner) return
+      
+      const activityData = {
+        userId: userId,
+        userAvatar: assigner.avatar,
+        userDisplayName: assigner.displayName || assigner.username,
+        action: action,
+        content: content,
+        activityAt: Date.now()
+      }
+      
+      // Lưu hoạt động vào card
+      const result = await cardModel.unshiftNewActivity(cardId, activityData)
+      
+      // Phát sự kiện socket nếu có global.io
+      if (global.io) {
+        global.io.emit('BE_CARD_ACTIVITY_UPDATED', {
+          cardId: cardId,
+          activity: activityData,
+          activityType: action
+        })
+      }
+      
+      return result
+    }
+
+    // Đánh dấu card hoàn thành/chưa hoàn thành
+    if (Object.prototype.hasOwnProperty.call(reqBody, 'isCompleted')) {
+      const actionType = reqBody.isCompleted ? 'MARK_COMPLETE' : 'MARK_INCOMPLETE'
+      const content = reqBody.isCompleted ? 
+        `${assigner?.displayName || 'Ai đó'} đã đánh dấu thẻ này là hoàn thành.` : 
+        `${assigner?.displayName || 'Ai đó'} đã đánh dấu thẻ này là chưa hoàn thành.`
+      
+      // Ghi nhận hoạt động
+      await trackActivity(cardId, actionType, content)
+
+      // Cập nhật trạng thái card
+      updatedCard = await cardModel.update(cardId, { isCompleted: reqBody.isCompleted })
     } else if (reqBody.incomingMemberInfo) {
       updatedCard = await cardModel.updateMembers(cardId, reqBody.incomingMemberInfo)
       
-      if (updatedCard.isAddAction) {
-        const card = await cardModel.findOneById(cardId)
-        if (global.io && assigner) { // Kiểm tra assigner tồn tại
-          global.io.emit('BE_CARD_ASSIGNMENT_NOTIFICATION', {
-            userId: reqBody.incomingMemberInfo.userId,
-            assignedById: assigner._id, // Thêm assignedById
-            assignedBy: assigner.displayName || assigner.username, // Sử dụng displayName từ assigner
-            cardId: cardId,
-            cardTitle: card.title,
-            boardId: card.boardId,
-            columnId: card.columnId
-          })
+      const isAddAction = reqBody.incomingMemberInfo.action === CARD_MEMBER_ACTIONS.ADD
+      const actionType = isAddAction ? 'ADD_MEMBER' : 'REMOVE_MEMBER'
+      
+      // Lấy thông tin người được thêm/xóa
+      let memberName = 'Ai đó'
+      try {
+        const memberUser = await userModel.findOneById(reqBody.incomingMemberInfo.userId)
+        if (memberUser) {
+          memberName = memberUser.displayName || memberUser.username
         }
+      } catch (error) {
+        console.error('Lỗi khi lấy thông tin thành viên:', error)
       }
+      
+      // Tạo nội dung hoạt động
+      const content = isAddAction ?
+        `${assigner?.displayName || 'Ai đó'} đã thêm ${memberName} vào thẻ.` : 
+        `${assigner?.displayName || 'Ai đó'} đã xóa ${memberName} khỏi thẻ.`
+      
+      // Ghi nhận hoạt động
+      await trackActivity(cardId, actionType, content)
+      
+      // Không gửi thông báo task assignment nữa
     } else if (reqBody.commentToAdd) {
       const commentData = {
         ...reqBody.commentToAdd,
-        userId: new ObjectId(userId), // Dùng userId từ tham số
-        userAvatar: assigner?.avatar, // Lấy avatar từ assigner
-        userDisplayName: assigner?.displayName || assigner?.username, // Lấy tên từ assigner
+        userId: new ObjectId(userId),
+        userAvatar: assigner?.avatar,
+        userDisplayName: assigner?.displayName || assigner?.username,
         commentedAt: Date.now()
       }
       updatedCard = await cardModel.unshiftNewComment(cardId, commentData)
       
-      // Emit sự kiện comment mới sau khi thêm thành công
-      if (global.io && updatedCard) {
-        const card = await cardModel.findOneById(cardId) // Lấy lại card để có members
-        global.io.emit('BE_NEW_COMMENT_NOTIFICATION', {
-          userId: userId,
-          userName: commentData.userDisplayName,
-          cardId: cardId,
-          cardTitle: updatedCard.title,
-          boardId: updatedCard.boardId,
-          cardMembers: card.memberIds || [] // Gửi kèm memberIds
-          // mentionedUserIds: [] // Cần logic để parse @mention nếu muốn
-        })
+      // Ghi nhận hoạt động thêm bình luận
+      await trackActivity(
+        cardId,
+        'ADD_COMMENT',
+        `${assigner?.displayName || 'Ai đó'} đã thêm một bình luận vào thẻ này.`
+      )
+      
+      // Không gửi thông báo comment nữa
+    } else if (Object.prototype.hasOwnProperty.call(reqBody, 'cover')) {
+      if (reqBody.cover === null) {
+        // Xóa cover hiện tại
+        updatedCard = await cardModel.update(cardId, { cover: null })
+        
+        // Ghi nhận hoạt động xóa cover
+        await trackActivity(
+          cardId,
+          'REMOVE_COVER',
+          `${assigner?.displayName || 'Ai đó'} đã xóa ảnh bìa.`
+        )
+      } else {
+        // Cập nhật ảnh bìa
+        updatedCard = await cardModel.update(cardId, { cover: reqBody.cover })
+        
+        // Ghi nhận hoạt động cập nhật ảnh bìa
+        await trackActivity(
+          cardId,
+          'UPDATE_COVER',
+          `${assigner?.displayName || 'Ai đó'} đã cập nhật ảnh bìa.`
+        )
       }
-    } else if (reqBody.attachmentIdToRemove) {
+    } else if (uploadedFile && uploadedFile.fieldname === 'cardCover') {
+      const uploadResult = await CloudinaryProvider.streamUpload(uploadedFile.buffer, 'card-covers')
+      updatedCard = await cardModel.update(cardId, {
+        cover: uploadResult.secure_url,
+        updatedAt: Date.now()
+      })
+      
+      // Ghi nhận hoạt động thêm bìa mới
+      await trackActivity(cardId, 'UPDATE_COVER', `${assigner?.displayName || 'Ai đó'} đã cập nhật ảnh bìa cho thẻ.`)
+    } else if (uploadedFile && uploadedFile.fieldname === 'attachmentFile') {
+      // Xử lý upload file đính kèm đơn lẻ (giữ code hiện tại)
+      // ...
+      
+      // Giữ nguyên phần code xử lý attachment
+      const uploadResult = await S3Provider.uploadFile(uploadedFile.buffer, uploadedFile.originalname, 'card-attachment')
+      
+      const newAttachment = {
+        url: uploadResult.url,
+        fileName: uploadedFile.originalname,
+        mimeType: uploadedFile.mimetype,
+        size: uploadedFile.size,
+        uploadAt: Date.now(),
+        uploadBy: {
+          _id: userId,
+          displayName: assigner?.displayName || 'Unnamed',
+          avatar: assigner?.avatar
+        }
+      }
+      
+      updatedCard = await cardModel.pushAttachment(cardId, newAttachment)
+      
+      // Ghi nhận hoạt động thêm tệp đính kèm
+      await trackActivity(
+        cardId,
+        'ADD_ATTACHMENT',
+        `${assigner?.displayName || 'Ai đó'} đã thêm tệp đính kèm ${uploadedFile.originalname}.`
+      )
+    } else if (Object.prototype.hasOwnProperty.call(reqBody, 'description')) {
+      // Cập nhật mô tả
+      updatedCard = await cardModel.update(cardId, { description: reqBody.description })
+      
+      // Ghi nhận hoạt động cập nhật mô tả
+      await trackActivity(
+        cardId,
+        'UPDATE_DESCRIPTION',
+        `${assigner?.displayName || 'Ai đó'} đã cập nhật mô tả thẻ.`
+      )
+    } else if (Object.prototype.hasOwnProperty.call(reqBody, 'title')) {
+      // Cập nhật tiêu đề
+      updatedCard = await cardModel.update(cardId, { title: reqBody.title })
+      
+      // Ghi nhận hoạt động cập nhật tiêu đề
+      await trackActivity(
+        cardId,
+        'UPDATE_TITLE',
+        `${assigner?.displayName || 'Ai đó'} đã cập nhật tiêu đề thành "${reqBody.title}".`
+      )
+    } else if (Object.prototype.hasOwnProperty.call(reqBody, 'attachmentIdToRemove')) {
+      // Xóa attachment
       const fileUrlToRemove = reqBody.attachmentIdToRemove
       updatedCard = await cardModel.pullAttachment(cardId, fileUrlToRemove)
-      // Cần thêm logic xóa file khỏi S3/Cloudinary ở đây nếu cần
-      // await S3Provider.deleteFileByUrl(fileUrlToRemove)
-    } else if (uploadedFile && uploadedFile.fieldname === 'attachmentFile') {
-      // ... (logic upload attachment đơn lẻ)
+      
+      // Ghi nhận hoạt động xóa tệp đính kèm
+      await trackActivity(
+        cardId,
+        'REMOVE_ATTACHMENT',
+        `${assigner?.displayName || 'Ai đó'} đã xóa một tệp đính kèm.`
+      )
+    } else if (Object.prototype.hasOwnProperty.call(reqBody, 'startDate')) {
+      // Cập nhật ngày bắt đầu
+      updatedCard = await cardModel.update(cardId, { startDate: reqBody.startDate })
+      
+      // Ghi nhận hoạt động cập nhật ngày bắt đầu
+      await trackActivity(
+        cardId,
+        'UPDATE_START_DATE',
+        `${assigner?.displayName || 'Ai đó'} đã ${reqBody.startDate ? 'cập nhật' : 'xóa'} ngày bắt đầu.`
+      )
+    } else if (Object.prototype.hasOwnProperty.call(reqBody, 'dueDate')) {
+      // Cập nhật ngày hết hạn
+      updatedCard = await cardModel.update(cardId, { dueDate: reqBody.dueDate })
+      
+      // Ghi nhận hoạt động cập nhật ngày hết hạn
+      await trackActivity(
+        cardId,
+        'UPDATE_DUE_DATE',
+        `${assigner?.displayName || 'Ai đó'} đã ${reqBody.dueDate ? 'cập nhật' : 'xóa'} ngày hết hạn.`
+      )
+    } else if (reqBody.labelIdToAdd) {
+      // Thêm nhãn vào card
+      updatedCard = await cardModel.pushLabelId(cardId, reqBody.labelIdToAdd)
+      
+      try {
+        // Lấy thông tin nhãn
+        const label = await labelModel.findOneById(reqBody.labelIdToAdd)
+        
+        if (label) {
+          // Ghi nhận hoạt động thêm nhãn
+          await trackActivity(
+            cardId,
+            'ADD_LABEL', 
+            `${assigner?.displayName || 'Ai đó'} đã thêm nhãn "${label.name}" vào thẻ.`
+          )
+        }
+      } catch (error) {
+        console.error('Lỗi khi ghi nhận hoạt động thêm nhãn:', error)
+      }
+    } else if (reqBody.labelIdToRemove) {
+      // Xóa nhãn khỏi card
+      try {
+        // Lấy thông tin nhãn trước khi xóa
+        const label = await labelModel.findOneById(reqBody.labelIdToRemove)
+        
+        // Xóa nhãn
+        updatedCard = await cardModel.pullLabelId(cardId, reqBody.labelIdToRemove)
+        
+        if (label) {
+          // Ghi nhận hoạt động xóa nhãn
+          await trackActivity(
+            cardId,
+            'REMOVE_LABEL', 
+            `${assigner?.displayName || 'Ai đó'} đã xóa nhãn "${label.name}" khỏi thẻ.`
+          )
+        }
+      } catch (error) {
+        console.error('Lỗi khi ghi nhận hoạt động xóa nhãn:', error)
+      }
     } else {
       const { attachmentIdToRemove, ...restUpdateData } = updateData // userId không còn trong updateData
       if (Object.keys(restUpdateData).length > 0) { 
@@ -102,6 +283,7 @@ const update = async (cardId, reqBody, uploadedFile, userId) => {
            updatedCard = await cardModel.findOneById(cardId)
       }
     }
+
     return updatedCard
   } catch (error) { throw error }
 }
@@ -128,39 +310,81 @@ const deleteCard = async (cardId) => {
  */
 const archiveCard = async (cardId, userId) => {
   try {
-    const targetCard = await cardModel.findOneById(cardId)
-    if (!targetCard) {
-      throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
-    }
-
+    // Lấy thông tin user hiện tại (người thực hiện hành động)
+    const user = await userModel.findOneById(userId)
+    
     // Đánh dấu card là đã lưu trữ
     const archivedCard = await cardModel.archiveCard(cardId, userId)
-
-    // Xóa cardId khỏi mảng cardOrderIds trong column chứa nó
-    await columnModel.pullCardOrderIds(targetCard)
-
-    return { 
-      archivedCard,
-      archiveResult: 'Card archived successfully!' 
+    
+    // Ghi nhận hoạt động lưu trữ vào activities
+    if (user) {
+      const activityData = {
+        userId: userId,
+        userAvatar: user.avatar,
+        userDisplayName: user.displayName || user.username,
+        action: 'ARCHIVE',
+        content: `${user.displayName || 'Ai đó'} đã lưu trữ thẻ này.`,
+        activityAt: Date.now()
+      }
+      
+      await cardModel.unshiftNewActivity(cardId, activityData)
+      
+      // Phát sự kiện socket nếu có global.io
+      if (global.io) {
+        global.io.emit('BE_CARD_ACTIVITY_UPDATED', {
+          cardId: cardId,
+          activity: activityData,
+          activityType: 'ARCHIVE'
+        })
+      }
     }
+    
+    return archivedCard
   } catch (error) { throw error }
 }
 
 /**
  * Khôi phục card từ trạng thái lưu trữ về trạng thái bình thường
  */
-const unarchiveCard = async (cardId, columnId) => {
+const unarchiveCard = async (cardId, userId, columnId) => {
   try {
-    const targetCard = await cardModel.findOneById(cardId)
-    if (!targetCard) {
-      throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found!')
-    }
+    // Xử lý logic khi khôi phục card
+    // Kiểm tra xem card có tồn tại và đã bị lưu trữ hay không
+    const existingCard = await cardModel.findOneById(cardId)
+    if (!existingCard) throw new ApiError(StatusCodes.NOT_FOUND, 'Card not found')
+    if (!existingCard.archived) throw new ApiError(StatusCodes.BAD_REQUEST, 'Card is not archived')
 
+    // Lấy thông tin user hiện tại (người thực hiện hành động)
+    const user = await userModel.findOneById(userId)
+    
     // Cập nhật lại columnId nếu được cung cấp
     const updateData = columnId ? { columnId } : {}
     
     // Khôi phục card từ trạng thái lưu trữ
     const unarchivedCard = await cardModel.unarchiveCard(cardId)
+    
+    // Ghi nhận hoạt động khôi phục vào activities
+    if (user) {
+      const activityData = {
+        userId: userId,
+        userAvatar: user.avatar,
+        userDisplayName: user.displayName || user.username,
+        action: 'RESTORE',
+        content: `${user.displayName || 'Ai đó'} đã khôi phục thẻ này từ kho lưu trữ.`,
+        activityAt: Date.now()
+      }
+      
+      await cardModel.unshiftNewActivity(cardId, activityData)
+      
+      // Phát sự kiện socket nếu có global.io
+      if (global.io) {
+        global.io.emit('BE_CARD_ACTIVITY_UPDATED', {
+          cardId: cardId,
+          activity: activityData,
+          activityType: 'RESTORE'
+        })
+      }
+    }
     
     // Cập nhật dữ liệu khác nếu cần
     if (Object.keys(updateData).length > 0) {

@@ -65,6 +65,16 @@ const CARD_COLLECTION_SCHEMA = Joi.object({
     commentedAt: Joi.date().timestamp()
   }).default([]),
 
+  // Thêm trường activities để theo dõi các hoạt động quan trọng của card
+  activities: Joi.array().items({
+    userId: Joi.string().pattern(OBJECT_ID_RULE).message(OBJECT_ID_RULE_MESSAGE),
+    userAvatar: Joi.string(),
+    userDisplayName: Joi.string(),
+    action: Joi.string().required(),
+    content: Joi.string(),
+    activityAt: Joi.date().timestamp()
+  }).default([]),
+
   createdAt: Joi.date().timestamp('javascript').default(Date.now),
   updatedAt: Joi.date().timestamp('javascript').default(null),
   _destroy: Joi.boolean().default(false)
@@ -142,6 +152,25 @@ const unshiftNewComment = async (cardId, commentData) => {
     const result = await GET_DB().collection(CARD_COLLECTION_NAME).findOneAndUpdate(
       { _id: new ObjectId(cardId) },
       { $push: { comments: { $each: [commentData], $position: 0 } } },
+      { returnDocument: 'after' }
+    )
+    return result
+  } catch (error) { throw new Error(error) }
+}
+
+/**
+ * Thêm một hoạt động mới vào đầu mảng activities của card
+ */
+const unshiftNewActivity = async (cardId, activityData) => {
+  try {
+    // Đảm bảo userId là ObjectId nếu tồn tại
+    if (activityData.userId) {
+      activityData.userId = new ObjectId(activityData.userId)
+    }
+    
+    const result = await GET_DB().collection(CARD_COLLECTION_NAME).findOneAndUpdate(
+      { _id: new ObjectId(cardId) },
+      { $push: { activities: { $each: [activityData], $position: 0 } } },
       { returnDocument: 'after' }
     )
     return result
@@ -381,6 +410,7 @@ export const cardModel = {
   update,
   deleteManyByColumnId,
   unshiftNewComment,
+  unshiftNewActivity,
   updateMembers,
   updateManyComments,
   deleteOneById,

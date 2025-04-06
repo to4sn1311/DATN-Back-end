@@ -35,36 +35,8 @@ const update = async (req, res, next) => {
     // Truyền cả req.body, file, và userId vào service
     const updatedCard = await cardService.update(cardId, req.body, file, userId)
 
-    // Kiểm tra nếu có thành viên mới được thêm vào card
-    if (req.body.incomingMemberInfo && req.body.incomingMemberInfo.action === 'ADD') {
-      try {
-        // Lấy thông tin của user gán nhiệm vụ từ jwt token
-        const assigner = {
-          displayName: req.jwtDecoded.displayName || req.jwtDecoded.username
-        }
-        
-        // Lấy thông tin của board chứa card
-        const card = await cardService.getDetails(cardId)
-        const board = await boardService.getDetails(card.boardId)
-        
-        // Lấy thông tin người được gán nhiệm vụ
-        const assigneeId = req.body.incomingMemberInfo.userId
-        
-        // Gửi thông báo qua socket.io
-        global.io.emit('BE_CARD_ASSIGNMENT_NOTIFICATION', {
-          userId: assigneeId,
-          assignedById: userId,
-          assignedBy: assigner.displayName,
-          cardId: cardId,
-          cardTitle: card.title,
-          boardId: card.boardId,
-          boardTitle: board.title
-        })
-      } catch (error) {
-        console.error('Lỗi khi gửi thông báo gán nhiệm vụ:', error)
-        // Không throw lỗi để không ảnh hưởng đến việc cập nhật card
-      }
-    }
+    // Không gửi thông báo gán nhiệm vụ nữa
+    // Chỉ cần trả về updatedCard
 
     res.status(StatusCodes.OK).json(updatedCard)
   } catch (error) { next(error) }
@@ -135,9 +107,10 @@ const archiveCard = async (req, res, next) => {
 const unarchiveCard = async (req, res, next) => {
   try {
     const cardId = req.params.id
+    const userId = req.jwtDecoded._id
     const { columnId } = req.body
     
-    const result = await cardService.unarchiveCard(cardId, columnId)
+    const result = await cardService.unarchiveCard(cardId, userId, columnId)
     
     res.status(StatusCodes.OK).json(result)
   } catch (error) { next(error) }

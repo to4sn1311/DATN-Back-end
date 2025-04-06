@@ -48,8 +48,13 @@ Router.route('/:id/restore')
 
 Router.route('/:id')
   .get(cardController.getDetails)
-  .put(authMiddleware.isAuthorized, cardValidation.update, cardController.update) // Update Card
-  .delete(authMiddleware.isAuthorized, cardController.deleteCard) // Tạm thời dùng deleteCard (lưu trữ)
+  .put(
+    authMiddleware.isAuthorized,
+    multerUploadMiddleware.upload.single('cardCover'),
+    cardValidation.update,
+    cardController.update
+  )
+  .delete(authMiddleware.isAuthorized, cardController.deleteCard)
 
 // Archive & Restore
 Router.route('/:id/archive')
